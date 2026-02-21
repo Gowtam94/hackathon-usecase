@@ -1,0 +1,153 @@
+variables:
+ SIA: rod
+ IRN: 12345
+ ARTIFACTORY_USERNAME: ${ARTIFACTORY_USERNAME}
+ ARTIFACTORY_TOKEN: ${ARTIFACTORY_TOKEN}
+ IMAGE_NAME_API: rod-api
+ IMAGE_NAME_APP: rod-app
+ VERSION: 1.0.0-{CI-PIPELINE-ID}-gcp
+ HELM_IMAGE: europe-docker.pkg.dev/irn-12389-adm-dev-ope-68/docker-internal/helm-gcloudv2.8.0
+ DOCKER_REGISTRY_DEV: europe-docker.pkg.dev/irn-adm-dev-ope-68
+ DOCKER_REGISTRY_PROD: europe-docker.pkg.dev/irn-adm-ope-ope-d2
+ DOCKER_IMAGE: docker-${SIA}-irn${IRN}
+ DEV_SERVICE_ACcOUNT_PATH: /etc/gcp/service_account_dev.json
+ GKE_CLUSTER_NAME: irn-70740-dev-ext2-cluster
+ GKE_ZONE: europe-west1
+ GKE_PROJECT: irn-70740-dev-ext2-e3
+ NAMESPACE_DEV: rod-12345-dev
+ ARTIFACTORY_REPO_URL: https://jfrog-artifactory.com/login
+ RELEASE_NAME: rod-12345
+ CHART_PATH: cloud-transformation/stack
+ PROMOTE_IMAGE: europe-docker.pkg.dev/irn-adm-ope-ope-d2
+
+tags:
+  - runner
+  - ci_gcp
+  - k8s
+  - gke
+  - rod
+
+stages:
+  - build_docker
+  - deploy_dev
+  - deploy_int
+  - propagate
+  - deploy_prod
+
+.tpl_build_gcp: &tpl_build_gcp:
+   image:
+     name: gcr.io/kaniko-executor-v1.23.2-debug
+     entrypoint: [""]
+  tags:
+    - ci_gcp
+
+
+
+build-push-api:
+  <<: *tpl_build_gcp
+  stage: build_docker
+  extends:
+    - .get_all_secrets_from_vault
+  script:
+    - echo "${ARTIFACT_REG_SA_KEY}" | base64 -d > kaniko/config.json
+    - export GOOGLE_APPLICATION_CREDENTIALS=kaniko/config.json
+    - /kaniko/executor \
+        --context "${CI_PROJECT_DIR}" \
+        --no-cache \
+        --dockerfile "${CI_PROJECT_DIR}/API/Dockerfile" \
+        --build-arg http_proxy="${http_proxy}" \
+        --build-arg https_proxy="${https_proxy}" \
+        --build-arg artifactory_username="${ARTIFACTORY_USERNAME}" \
+        --build-arg artifactory_api_key="${ARTIFACTORY_TOKEN}" \
+        --destination "europe-docker.pkg.dev/irn-12389-adm-dev-ope-68/${DOCKER_IMAGE}/${IMAGE_NAME_API}:${VERSION}" \
+        --registry-mirror "clk.dev.gcp.com"
+  when: manual
+  allow_failure: false
+  only:
+    refs:
+      - master
+      - /^feature\/.*$/
+
+  
+build-push-app:
+  <<: *tpl_build_gcp
+  stage: build_docker
+  extends:
+    - .get_all_secrets_from_vault
+  script:
+    - echo "${ARTIFACT_REG_SA_KEY}" | base64 -d > kaniko/config.json
+    - export GOOGLE_APPLICATION_CREDENTIALS=kaniko/config.json
+    - /kaniko/executor \
+        --context "${CI_PROJECT_DIR}" \
+        --no-cache \
+        --dockerfile "${CI_PROJECT_DIR}/APP/Dockerfile" \
+        --build-arg http_proxy="${http_proxy}" \
+        --build-arg https_proxy="${https_proxy}" \
+        --build-arg artifactory_username="${ARTIFACTORY_USERNAME}" \
+        --build-arg artifactory_api_key="${ARTIFACTORY_TOKEN}" \
+        --destination "europe-docker.pkg.dev/irn-12389-adm-dev-ope-68/${DOCKER_IMAGE}/${IMAGE_NAME_APP}:${VERSION}" \
+        --registry-mirror "clk.dev.gcp.com"
+  when: manual
+  allow_failure: false
+  only:
+    refs:
+      - master
+      - /^feature\/.*$/
+
+.tpl_dev_ext2_before_script: &tpl_dev_ext2_before_script:
+IMAGE: ${HELM_IMAGE}
+before_script:
+  - mkdir -p /etc/gcp/
+  - echo -n ${service_account_dev} base64 -d > ${DEV_SERVICE_ACcOUNT_PATH}
+  - gcloud auth-activate service account --keyfile ${DEV_SERVICE_ACcOUNT_PATH}
+  - gcloud container cluster credentials ${GKE_CLUSTER_NAME} ${GKE_ZONE} ${GKE_PROJECT}
+  - helm repo add cloudtransformation ${ARTIFACTORY_REPO_URL} ${ARTIFACTORY_USERNAME} ${ARTIFACTORY_TOKEN}
+  - helm repo3 update
+tags:
+  - gcp
+  - gke
+  - k8s
+  - rod
+
+
+deploy-dev-k8s:
+  <<: *tpl_dev_ext2_before_script
+  stage: deploy_dev
+  script:
+    - helm3 repo update
+    - |
+      helm3 upgrade --install ${RELEASE_NAME} ${CHART_PATH} \
+        --set apis[0].image.repository=europe-docker.pkg.dev/irn-12389-adm-dev-ope-68/${DOCKER_IMAGE}/${IMAGE_NAME_API} \
+        --set apis[0].image.tag=${VERSION} \
+        --set app[0].image.repository=europe-docker.pkg.dev/irn-12389-adm-dev-ope-68/${DOCKER_IMAGE}/${IMAGE_NAME_APP} \
+        --set app[0].image.tag=${VERSION} \
+        --set image_pull_secrets[0]=${RELEASE_NAME}-registry-secret \
+        --version 0.9.18 \
+        --history-max 5 \
+        --timeout 1800s \
+        --namespace ${NAMESPACE_DEV} \
+        -f helm/values/dev.yaml
+  when: manual
+  only:
+   - dev_branch
+
+
+propagate-k8s:
+  image: ${PROMOTE_IMAGE}
+  stage: propagate
+  before_script:
+    - echo -n "${ARTIFACT_REG_SA_KEY}" | base64 -d > docker-config.json
+    - echo "${DOCKER_PASSWORD}" | docker login -u "${DOCKER_USERNAME}" --password-stdin "${DOCKER_REGISTRY_DEV}"
+  script:
+    - promote -${SIA} --from="${DOCKER_REGISTRY_DEV}" --to="${DOCKER_REGISTRY_PROD}" "${DOCKER_IMAGE_API}"
+    - promote -${SIA} --from="${DOCKER_REGISTRY_DEV}" --to="${DOCKER_REGISTRY_PROD}" "${DOCKER_IMAGE_APP}"
+  tags:
+    - propagate
+  when: manual
+
+  
+
+
+
+
+
