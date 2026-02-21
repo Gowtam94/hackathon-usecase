@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: rod-12345-api
+spec:
+  type: ClusterIP
+  selector:
+    app: rod-12345-api   
+  ports:
+    - port: 80
+      targetPort: 8080
