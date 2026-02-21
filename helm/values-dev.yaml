@@ -1,0 +1,186 @@
+labels:
+  sia: rod
+  irn: "12345"
+  env: dev
+
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+apis:
+  name: rod-api
+  serviceAccountName: rod-12345-ksa
+
+  image:
+    repository: europe-docker.pkg.dev/irn-12389-adm-dev-ope-68/docker-${SIA}-irn${IRN}/${IMAGE_NAME_API}
+    pullPolicy: Always
+    tag: latest
+
+  replicas: 1
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 2048Mi
+    requests:
+      cpu: 200m
+      memory: 1024Mi
+
+  livenessProbe:
+    httpGet:
+      path: /actuator/health
+      port: 8080
+    initialDelaySeconds: 60
+    periodSeconds: 30
+    timeoutSeconds: 5
+
+  readinessProbe:
+    httpGet:
+      path: /actuator/health
+      port: 8080
+    initialDelaySeconds: 30
+    periodSeconds: 15
+    timeoutSeconds: 5
+
+  nodeSelector: {}
+
+  affinity: {}
+
+  tolerations: []
+
+  env:
+    - name: OKTA_REDIRECT_URL
+      value: https://rod-api.gke2.dev.gcp.com/v1/actuator/health
+
+  envFrom:
+    - secretRef:
+        name: vault-credentials
+
+  db:
+    type: cloudsql
+    image: gcr.io/cloudsql-docker/gcr-1.17-alpine
+    cloudsqlIpType: PRIVATE
+    instance: irn-12345-dev-europe-west1:pg-irn-12345-dev-f2=tcp:5432
+
+    env:
+      - name: http_proxy
+        value: app-proxy.gcp.company.com:80
+      - name: https_proxy
+        value: app-proxy.gcp.company.com:80
+
+    resources:
+      limits:
+        cpu: 300m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 256Mi
+
+  service:
+    enabled: true
+    type: ClusterIP
+    port: 80
+    targetPort: 8080
+
+  legacyIngress: true
+
+  ingress:
+    enabled: true
+    waf:
+      engine: detection_only
+    annotations:
+      kubernetes.io/ingress-class: nginx-external
+      nginx.ingress.kubernetes.io/rewrite-target: /$2
+    path: /
+    pathType: Prefix
+    tls:
+      hosts:
+        - rod-api.gke.dev.gcp.com
+      secretName: gke-dev-gcp-com-tls
+
+
+app:
+  enabled: true
+  name: rod-app
+  serviceAccountName: rod-12345-ksa
+
+  image:
+    repository: europe-docker.pkg.dev/irn-12389-adm-dev-ope-68/docker-${SIA}-irn${IRN}/${IMAGE_NAME_APP}
+    pullPolicy: Always
+    tag: latest
+
+  replicas: 1
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 2048Mi
+    requests:
+      cpu: 200m
+      memory: 1024Mi
+
+  livenessProbe:
+    httpGet:
+      path: /actuator/health
+      port: 8081
+    initialDelaySeconds: 60
+    periodSeconds: 30
+    timeoutSeconds: 5
+
+  readinessProbe:
+    httpGet:
+      path: /actuator/health
+      port: 8081
+    initialDelaySeconds: 30
+    periodSeconds: 15
+    timeoutSeconds: 5
+
+  nodeSelector: {}
+
+  affinity: {}
+
+  tolerations: []
+
+  envFrom:
+    - secretRef:
+        name: vault-credentials
+
+  service:
+    enabled: true
+    type: ClusterIP
+    port: 80
+    targetPort: 8081
+
+  legacyIngress: true
+
+  ingress:
+    enabled: true
+    waf:
+      engine: detection_only
+    annotations:
+      kubernetes.io/ingress-class: nginx-external
+      nginx.ingress.kubernetes.io/rewrite-target: /$2
+    hosts:
+      - host: rod-app.gke.dev.gcp.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - hosts:
+          - rod-app.gke.dev.gcp.com
+        secretName: gke-dev-gcp-com-tls
+
+arConfig:
+   mountPath: k8s-gke-dev-ext2-cluster1
+   role: rod-12345-dev-role
+   sia: rod
+   numirn: "12345"
+
+  
+    
+   
+
+       
+       
+  
