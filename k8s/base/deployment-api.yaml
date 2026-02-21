@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: irn-12345-rod-api
+  labels:
+    k8s-app: irn-12345-rod-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      k8s-app: irn-12345-rod-api
+  template:
+    metadata:
+      labels:
+        k8s-app: irn-12345-rod-api
+    spec:
+      imagePullSecrets:
+        - name: irn-12345-ar-registry-secret
+      containers:
+        - name: irn-12345-rod-api
+          image: busybox:latest
+          envFrom:
+            - configMapRef:
+                name: rod-configmap
+          resources:
+            limits:
+              cpu: "400m"
+              memory: "2048Mi"
+            requests:
+              cpu: "200m"
+              memory: "1048Mi"
+          volumeMounts:
+            - name: volume-rod
+              mountPath: /var/secret
+              readOnly: true
+        - name: cloudsql-proxy
+          image: gcr.io/cloudsql-docker/gcr-1.17-alpine
+          command: ["cloudsqlcredentials.json"]
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+          volumeMounts:
+            - name: volume-rod
+              mountPath: /var/secret
+              readOnly: true
+      volumes:
+        - name: volume-rod
+          secret:
+            secretName: rod-secret
