@@ -1,0 +1,19 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rod-12345-api-ingress
+  annotations:
+    kubernetes.io/ingress-class: nginx-external
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  rules:
+    - host: rod-api.gke2.dev.gcp.com
+      http:
+        paths:
+          - path: /api(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: rod-12345-api
+                port:
+                  number: 80
