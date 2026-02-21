@@ -1,0 +1,10 @@
+apiversion: kustomize.config.k8s.io/vbeta1
+kind: kustomization
+resources:
+  - deployment-api.yaml
+configMapgenerator:
+  -literals:
+    - Spring_profiles_active = dev
+    - db_instance = rod-12345-dev-f2-europe-west1:pg=tcp:5432
+-name: rod-12345-api
+
